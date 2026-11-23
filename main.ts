@@ -55,6 +55,40 @@ if (isPng) {
     process.exit(1);
   }
 }
+if (isJpeg) {
+  const dims = jpegDimensions(bytes);
+  if (dims === null) {
+    console.error('entry.png JPEG dimensions could not be parsed');
+    process.exit(1);
+  }
+  if (dims.width > 1024 || dims.height > 1024) {
+    console.error(`entry.png is ${dims.width}x${dims.height}, over the 1024x1024 cap`);
+    process.exit(1);
+  }
+}
+
+// Scan JPEG markers for the first frame header (SOF0/SOF1/SOF2) and read its
+// height and width. Returns null when no frame header is found.
+function jpegDimensions(buf: Buffer): { width: number; height: number } | null {
+  let i = 2; // skip the SOI marker
+  while (i + 9 < buf.length) {
+    if (buf[i] !== 0xff) {
+      i += 1;
+      continue;
+    }
+    const marker = buf[i + 1];
+    if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+      i += 2;
+      continue;
+    }
+    const len = buf.readUInt16BE(i + 2);
+    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      return { height: buf.readUInt16BE(i + 5), width: buf.readUInt16BE(i + 7) };
+    }
+    i += 2 + len;
+  }
+  return null;
+}
 
 mkdirSync(OUTPUT_DIR, { recursive: true });
 const outPath = join(OUTPUT_DIR, 'entry.png');
